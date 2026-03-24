@@ -73,6 +73,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 .col-fk-icon { color: #6B8AAF; font-size: 10px; flex-shrink: 0; }
 .col-type { font-size: 10px; color: #888; background: #0f0f18; padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
 .col-null { font-size: 9px; color: #555; flex-shrink: 0; }
+.col-check { font-size: 9px; color: #E0C45A; background: rgba(224,196,90,0.12); padding: 0 4px; border-radius: 3px; flex-shrink: 0; cursor: help; }
 .col-diff-hint { font-size: 10px; color: #E0C45A; cursor: help; flex-shrink: 0; font-weight: 700; }
 .col-row.crud-row { display: none; }
 
@@ -171,7 +172,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <body>
 
 <div class="topbar">
-  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-24 12:00pm</span>
+  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-24 12:10pm</span>
   <div class="version-toggle">
     <button id="btnV1" onclick="setVersion('v1')">V1</button>
     <button id="btnV2" class="active" onclick="setVersion('v2')">V2</button>
@@ -414,11 +415,16 @@ function parseSqlSchema(sqlText, domain) {
         foreignKeys.push({ from: `${tableName}.${colName}`, to: `${fkMatch[1]}.${fkMatch[2]}` });
       }
 
+      let checkDesc = '';
+      const checkMatch = trimmed.match(/CHECK\s*\(([^()]*(?:\([^()]*\))[^()]*)\)/i);
+      if (checkMatch) checkDesc = 'CHECK(' + checkMatch[1].trim() + ')';
+
       columns.push({
         name: colName,
         type: colType,
         nullable,
-        ...(defaultVal !== undefined ? { default: defaultVal } : {})
+        ...(defaultVal !== undefined ? { default: defaultVal } : {}),
+        ...(checkDesc ? { checkConstraint: checkDesc } : {})
       });
     }
 
@@ -1116,10 +1122,12 @@ function render() {
         const nameClass = isPk ? 'col-name pk' : (isFk ? 'col-name fk' : 'col-name');
         html += `<div class="col-row${colDiffClass}${keyClass}">`;
         if (isFk) html += `<span class="col-fk-icon">&#128279;</span>`;
-        const colDescTip = (col.description || col.name).replace(/"/g, '&quot;');
+        const colDescParts = [col.description, col.checkConstraint].filter(Boolean);
+        const colDescTip = (colDescParts.length ? colDescParts.join(' | ') : col.name).replace(/"/g, '&quot;');
         html += `<span class="${nameClass}" title="${colDescTip}">${col.name}</span>`;
         html += `<span class="col-type">${col.type}</span>`;
         if (col.nullable) html += `<span class="col-null">null</span>`;
+        if (col.checkConstraint) html += `<span class="col-check" title="${col.checkConstraint.replace(/"/g, '&quot;')}">check</span>`;
         if (mc.status === 'modified' && mc.changes) html += `<span class="col-diff-hint" title="${mc.changes}">*</span>`;
         if (isFk && fkTargets[t + '.' + col.name]) html += `<span class="fk-target" title="${fkTargets[t + '.' + col.name]}"> ${fkTargets[t + '.' + col.name]}</span>`;
         html += `</div>`;
@@ -1149,10 +1157,12 @@ function render() {
           const isAudit = ['created_at','updated_at','created_by','updated_by','is_active','is_deleted'].includes(col.name);
           html += `<div class="col-row added${isPk ? ' pk-row' : (isAudit ? ' crud-row' : (isFk ? '' : ' non-key'))}">`;
           if (isFk) html += `<span class="col-fk-icon">&#128279;</span>`;
-          const colDescTip2 = (col.description || col.name).replace(/"/g, '&quot;');
+          const colDescParts2 = [col.description, col.checkConstraint].filter(Boolean);
+          const colDescTip2 = (colDescParts2.length ? colDescParts2.join(' | ') : col.name).replace(/"/g, '&quot;');
           html += `<span class="${nameClass}" title="${colDescTip2}">${col.name}</span>`;
           html += `<span class="col-type">${col.type}</span>`;
           if (col.nullable) html += `<span class="col-null">null</span>`;
+          if (col.checkConstraint) html += `<span class="col-check" title="${col.checkConstraint.replace(/"/g, '&quot;')}">check</span>`;
           if (isFk && fkTargets[t + '.' + col.name]) html += `<span class="fk-target" title="${fkTargets[t + '.' + col.name]}"> ${fkTargets[t + '.' + col.name]}</span>`;
           html += `</div>`;
         }
