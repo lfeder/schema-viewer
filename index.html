@@ -448,15 +448,14 @@ function promptGhToken() {
   return token;
 }
 
-async function fetchFile(path, token) {
-  const headers = { 'Accept': 'application/vnd.github.v3.raw' };
-  if (token) headers['Authorization'] = `token ${token}`;
-  const res = await fetch(`https://api.github.com/repos/${SOURCE_REPO}/contents/${path}?ref=main`, { headers });
+async function fetchRaw(path) {
+  const res = await fetch(`https://raw.githubusercontent.com/${SOURCE_REPO}/main/${path}`);
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
   return res.text();
 }
 
 async function discoverSqlFiles(token) {
+  // One API call to list the migrations directory
   const headers = { 'Accept': 'application/vnd.github.v3+json' };
   if (token) headers['Authorization'] = `token ${token}`;
   const res = await fetch(
@@ -468,14 +467,16 @@ async function discoverSqlFiles(token) {
   return entries.filter(e => e.name.endsWith('.sql')).map(e => ({ path: e.path, name: e.name }));
 }
 
+const CACHE_KEY = 'aloha_schema_v1_cache';
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 async function loadSchemaFromSql() {
   const token = getGhToken();
 
-  // Check localStorage cache (< 5 min old = fresh)
-  const CACHE_KEY = 'aloha_schema_v1_cache';
+  // Check localStorage cache
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
-    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
       schemaV1.tables = cached.tables;
       schemaV1.foreignKeys = cached.foreignKeys;
       return { ok: true, tableCount: Object.keys(cached.tables).length, fromCache: true };
@@ -487,10 +488,11 @@ async function loadSchemaFromSql() {
     const allTables = {};
     const allFks = [];
 
+    // Fetch file contents via raw.githubusercontent.com (no API rate limit)
     const results = await Promise.all(
       sqlFiles.map(async ({ path, name }) => {
         const domain = domainFromFilename(name);
-        const text = await fetchFile(path, token);
+        const text = await fetchRaw(path);
         return parseSqlSchema(text, domain);
       })
     );
@@ -506,13 +508,23 @@ async function loadSchemaFromSql() {
     schemaV1.tables = allTables;
     schemaV1.foreignKeys = validFks;
 
-    // Cache for rate limiting
+    // Cache parsed result
     try {
       localStorage.setItem(CACHE_KEY, JSON.stringify({ tables: allTables, foreignKeys: validFks, ts: Date.now() }));
     } catch(e) { /* storage full */ }
 
     return { ok: true, tableCount: Object.keys(allTables).length };
   } catch (e) {
+    // Fall back to stale cache if fetch fails
+    try {
+      const stale = JSON.parse(localStorage.getItem(CACHE_KEY));
+      if (stale && stale.tables) {
+        schemaV1.tables = stale.tables;
+        schemaV1.foreignKeys = stale.foreignKeys;
+        return { ok: true, tableCount: Object.keys(stale.tables).length, fromCache: true, stale: true };
+      }
+    } catch(e2) { /* no stale cache */ }
+
     if (e.message.includes('401') || e.message.includes('403')) {
       localStorage.removeItem(GH_TOKEN_KEY);
     }
@@ -532,8 +544,9 @@ async function loadSchemaFromSql() {
     const fresh = JSON.parse(JSON.stringify(schemaV1));
     schemaV2.tables = fresh.tables;
     schemaV2.foreignKeys = fresh.foreignKeys;
-    status = `${sqlResult.tableCount} tables (${sqlResult.fromCache ? 'cached' : 'live'})`;
-    statusColor = '#2A9D8F';
+    const src = sqlResult.stale ? 'stale cache' : (sqlResult.fromCache ? 'cached' : 'live');
+    status = `${sqlResult.tableCount} tables (${src})`;
+    statusColor = sqlResult.stale ? '#E0C45A' : '#2A9D8F';
   }
 
   // Layer saved V2 edits on top (localStorage first, then git JSON)
