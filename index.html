@@ -470,6 +470,7 @@ async function discoverSqlFiles(token) {
 
 const CACHE_KEY = 'aloha_schema_v1_cache';
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const CACHE_VERSION = 2; // bump to invalidate stale caches
 
 async function loadSchemaFromSql() {
   const token = getGhToken();
@@ -477,7 +478,7 @@ async function loadSchemaFromSql() {
   // Check localStorage cache
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    if (cached && cached.v === CACHE_VERSION && Date.now() - cached.ts < CACHE_TTL) {
       schemaV1.tables = cached.tables;
       schemaV1.foreignKeys = cached.foreignKeys;
       return { ok: true, tableCount: Object.keys(cached.tables).length, fromCache: true };
@@ -511,7 +512,7 @@ async function loadSchemaFromSql() {
 
     // Cache parsed result
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ tables: allTables, foreignKeys: validFks, ts: Date.now() }));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ tables: allTables, foreignKeys: validFks, ts: Date.now(), v: CACHE_VERSION }));
     } catch(e) { /* storage full */ }
 
     return { ok: true, tableCount: Object.keys(allTables).length };
@@ -519,7 +520,7 @@ async function loadSchemaFromSql() {
     // Fall back to stale cache if fetch fails
     try {
       const stale = JSON.parse(localStorage.getItem(CACHE_KEY));
-      if (stale && stale.tables) {
+      if (stale && stale.tables && stale.v === CACHE_VERSION) {
         schemaV1.tables = stale.tables;
         schemaV1.foreignKeys = stale.foreignKeys;
         return { ok: true, tableCount: Object.keys(stale.tables).length, fromCache: true, stale: true };
