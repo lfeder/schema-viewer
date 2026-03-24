@@ -389,8 +389,9 @@ function parseSqlSchema(sqlText, domain) {
     const parts = splitTopLevel(bodyMatch[1]);
 
     for (const part of parts) {
-      const trimmed = part.trim();
-      if (!trimmed || /^\s*--/.test(trimmed)) continue;
+      // Strip comment lines within the part (comments before a column on the same comma-separated chunk)
+      const trimmed = part.split('\n').filter(l => !/^\s*--/.test(l)).join(' ').trim();
+      if (!trimmed) continue;
       if (/^CONSTRAINT\s/i.test(trimmed)) continue;
 
       const colMatch = trimmed.match(/^(\w+)\s+([\w]+(?:\s*\([^)]*\))?(?:\s*\[\])?)/i);
