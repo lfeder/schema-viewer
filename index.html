@@ -983,8 +983,9 @@ function resetSchema() {
   a.click();
   URL.revokeObjectURL(a.href);
 
-  // Clear localStorage and reload
+  // Clear localStorage (V2 edits + V1 cache) and reload
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(CACHE_KEY);
   location.reload();
 }
 
