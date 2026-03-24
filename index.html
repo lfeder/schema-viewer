@@ -171,7 +171,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <body>
 
 <div class="topbar">
-  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-20 02:42pm</span>
+  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-24 12:00pm</span>
   <div class="version-toggle">
     <button id="btnV1" onclick="setVersion('v1')">V1</button>
     <button id="btnV2" class="active" onclick="setVersion('v2')">V2</button>
@@ -235,7 +235,7 @@ function buildGroups(schema) {
   for (const g of Object.keys(groups).sort()) {
     ordered[g] = groups[g];
   }
-  // Apply saved table order
+  // Apply saved table order, default to alphabetical
   const savedOrder = schema.tableOrder || {};
   for (const [g, tables] of Object.entries(ordered)) {
     if (savedOrder[g]) {
@@ -245,6 +245,8 @@ function buildGroups(schema) {
         const bi = so.indexOf(b);
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       });
+    } else {
+      tables.sort((a, b) => a.localeCompare(b));
     }
   }
   return ordered;
@@ -1130,7 +1132,7 @@ function render() {
   // Ungrouped V2 tables
   if (currentVersion === 'v2') {
     const allGrouped = new Set(Object.values(getActiveGroups()).flat());
-    const ungrouped = Object.keys(schema.tables).filter(t => !allGrouped.has(t));
+    const ungrouped = Object.keys(schema.tables).filter(t => !allGrouped.has(t)).sort();
     if (ungrouped.length) {
       html += `<div class="domain-group"><div class="domain-label">New (V2)</div><div class="domain-cards">`;
       for (const t of ungrouped) {
