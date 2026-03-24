@@ -1,0 +1,1862 @@
+<!-- v: 03-23 03:15pm -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aloha Schema Visualizer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; height: 100vh; }
+
+/* Top bar */
+.topbar { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: #12121a; border-bottom: 1px solid #2a2a3a; z-index: 100; position: relative; flex-shrink: 0; }
+.topbar h1 { font-size: 18px; color: #6B8AAF; white-space: nowrap; }
+.version-toggle { display: flex; align-items: center; gap: 8px; background: #1A1A2E; border-radius: 20px; padding: 4px; }
+.version-toggle button { padding: 5px 16px; border: none; border-radius: 16px; cursor: pointer; font-size: 13px; font-weight: 600; background: transparent; color: #888; transition: all 0.2s; }
+.version-toggle button.active { background: #6B8AAF; color: #fff; }
+.search-box { background: #1A1A2E; border: 1px solid #2a2a3a; border-radius: 6px; padding: 6px 12px; color: #e0e0e0; font-size: 13px; width: 220px; outline: none; }
+.search-box:focus { border-color: #6B8AAF; }
+.stats { display: flex; gap: 16px; margin-left: auto; font-size: 12px; color: #888; white-space: nowrap; }
+.stats span { display: flex; align-items: center; gap: 4px; }
+.stats .num { color: #E0C45A; font-weight: 600; }
+
+/* Layout */
+.main-layout { display: flex; height: calc(100vh - 49px); }
+.canvas-wrap { flex: 1; overflow: auto; position: relative; }
+.canvas { padding: 24px; min-width: 100%; position: relative; }
+.svg-overlay { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 1; }
+
+/* Sidebar */
+.sidebar { width: 560px; background: #12121a; border-left: 1px solid #2a2a3a; overflow-y: auto; flex-shrink: 0; transition: width 0.2s; padding: 16px; }
+.sidebar.collapsed { width: 0; padding: 0; overflow: hidden; }
+.sidebar h2 { font-size: 14px; color: #6B8AAF; margin-bottom: 12px; }
+.diff-item { padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; font-size: 12px; }
+.diff-item.added { background: rgba(42,157,143,0.15); border-left: 3px solid #2A9D8F; }
+.diff-item.removed { background: rgba(231,76,60,0.15); border-left: 3px solid #e74c3c; }
+.diff-item.modified { background: rgba(224,196,90,0.15); border-left: 3px solid #E0C45A; }
+.diff-item .diff-table { font-weight: 600; color: #e0e0e0; }
+.diff-item .diff-detail { color: #999; margin-top: 2px; }
+.no-diff { color: #555; font-size: 13px; font-style: italic; }
+.sidebar-toggle { position: relative; z-index: 50; background: #1A1A2E; border: 1px solid #2a2a3a; border-right: none; color: #888; cursor: pointer; padding: 12px 4px; border-radius: 4px 0 0 4px; font-size: 12px; align-self: center; flex-shrink: 0; margin-right: -1px; }
+.sidebar-toggle:hover { color: #6B8AAF; border-color: #6B8AAF; }
+
+/* Domain groups */
+.domain-group { margin-bottom: 28px; }
+.domain-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #6B8AAF; margin-bottom: 10px; padding-left: 4px; font-weight: 700; }
+.domain-cards { display: flex; flex-wrap: wrap; gap: 12px; position: relative; z-index: 2; }
+
+/* Table cards */
+.table-card { background: #1A1A2E; border: 1px solid #2a2a3a; border-radius: 8px; width: 280px; cursor: grab; user-select: none; transition: border-color 0.2s, box-shadow 0.2s; }
+.table-card:hover { border-color: #6B8AAF; box-shadow: 0 0 12px rgba(107,138,175,0.2); }
+.table-card.highlight { border-color: #6B8AAF; box-shadow: 0 0 16px rgba(107,138,175,0.35); }
+.table-card.added { border-color: #2A9D8F; background: rgba(42,157,143,0.08); }
+.table-card.removed { border-color: #e74c3c; background: rgba(231,76,60,0.08); }
+.table-card.modified { border-color: #E0C45A; background: rgba(224,196,90,0.08); }
+.table-card.hidden { display: none; }
+.table-card.is-view { border-color: #9B59B6; }
+.table-card.is-view .card-header { border-bottom-color: #9B59B6; }
+.card-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #2a2a3a; }
+.card-header .tname { font-size: 13px; font-weight: 700; color: #e0e0e0; }
+.card-header .tbadge { font-size: 9px; color: #9B59B6; background: rgba(155,89,182,0.15); padding: 1px 6px; border-radius: 8px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.card-columns { padding: 6px 0; max-height: 260px; overflow-y: auto; }
+.card-columns::-webkit-scrollbar { width: 4px; }
+.card-columns::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.col-row { display: flex; align-items: center; padding: 2px 12px; font-size: 11px; gap: 6px; }
+.col-row:hover { background: rgba(107,138,175,0.08); }
+.col-row.added { background: rgba(42,157,143,0.12); }
+.col-row.removed { background: rgba(231,76,60,0.12); text-decoration: line-through; color: #e74c3c; }
+.col-row.modified { background: rgba(224,196,90,0.12); }
+.col-name { flex: 1; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-name.pk { color: #E0C45A; font-weight: 600; }
+.col-name.fk { color: #6B8AAF; }
+.col-fk-icon { color: #6B8AAF; font-size: 10px; flex-shrink: 0; }
+.col-type { font-size: 10px; color: #888; background: #0f0f18; padding: 1px 5px; border-radius: 3px; white-space: nowrap; flex-shrink: 0; }
+.col-null { font-size: 9px; color: #555; flex-shrink: 0; }
+.col-diff-hint { font-size: 10px; color: #E0C45A; cursor: help; flex-shrink: 0; font-weight: 700; }
+.col-row.crud-row { display: none; }
+
+/* Compact mode toggle */
+.compact-btn { padding: 5px 14px; border: 1px solid #2a2a3a; border-radius: 16px; cursor: pointer; font-size: 13px; font-weight: 600; background: transparent; color: #888; transition: all 0.2s; white-space: nowrap; }
+.compact-btn:hover { border-color: #6B8AAF; color: #6B8AAF; }
+.compact-btn.active { background: #6B8AAF; color: #fff; border-color: #6B8AAF; }
+
+/* Compact card overrides */
+.compact .table-card { width: 220px; }
+.compact .table-card .card-columns { display: none; }
+.col-row.pk-row { display: none; }
+
+/* Core flow chart */
+.cf-container { display: none; position: relative; overflow: auto; height: 100%; }
+.cf-container svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; }
+#coreFlowContent { position: relative; min-height: 100%; min-width: 100%; }
+#coreFlowContent .table-card { position: absolute; width: 220px; cursor: grab; z-index: 2; }
+#coreFlowContent .table-card:active { cursor: grabbing; z-index: 20; }
+
+/* Edit button on cards */
+.add-table-btn { background: #1A1A2E; border: 1px dashed #2A9D8F; color: #2A9D8F; cursor: pointer; font-size: 13px; padding: 12px 24px; border-radius: 8px; width: 280px; text-align: center; transition: all 0.15s; }
+.add-table-btn:hover { background: rgba(42,157,143,0.1); }
+
+/* Modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.modal { background: #1A1A2E; border: 1px solid #2a2a3a; border-radius: 12px; width: 90vw; max-width: 1100px; max-height: 80vh; display: flex; flex-direction: column; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #2a2a3a; }
+.modal-header h3 { font-size: 15px; color: #6B8AAF; }
+.modal-close { background: none; border: none; color: #888; cursor: pointer; font-size: 18px; }
+.modal-close:hover { color: #e0e0e0; }
+.modal-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+.modal-footer { padding: 12px 18px; border-top: 1px solid #2a2a3a; display: flex; justify-content: flex-end; gap: 8px; }
+.modal-footer button { padding: 7px 18px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn-save { background: #6B8AAF; color: #fff; }
+.btn-save:hover { background: #7a9bc0; }
+.btn-cancel { background: #2a2a3a; color: #ccc; }
+.btn-cancel:hover { background: #333; }
+.btn-danger { background: rgba(231,76,60,0.2); color: #e74c3c; border: 1px solid #e74c3c; }
+.btn-danger:hover { background: rgba(231,76,60,0.3); }
+
+/* Modal form fields */
+.modal-field { margin-bottom: 12px; }
+.modal-field label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.modal-field input, .modal-field select { width: 100%; background: #0a0a0f; border: 1px solid #2a2a3a; color: #e0e0e0; padding: 7px 10px; border-radius: 5px; font-size: 13px; outline: none; }
+.modal-field input:focus, .modal-field select:focus { border-color: #6B8AAF; }
+.modal-cols-header { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 8px; }
+.modal-cols-header span { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.modal-add-col { background: none; border: 1px dashed #2A9D8F; color: #2A9D8F; cursor: pointer; font-size: 11px; padding: 3px 10px; border-radius: 4px; }
+.modal-add-col:hover { background: rgba(42,157,143,0.1); }
+.modal-col-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; padding: 6px 8px; background: #0f0f18; border-radius: 5px; }
+.modal-col-row input { background: #0a0a0f; border: 1px solid #2a2a3a; color: #e0e0e0; padding: 5px 8px; border-radius: 4px; font-size: 12px; outline: none; }
+.modal-col-row input:focus { border-color: #6B8AAF; }
+.modal-col-row select { background: #0a0a0f; border: 1px solid #2a2a3a; color: #e0e0e0; padding: 5px 6px; border-radius: 4px; font-size: 12px; outline: none; }
+.modal-col-row .col-name-input { flex: 2; min-width: 0; }
+.modal-col-row .col-type-input { flex: 1; min-width: 0; }
+.modal-col-row .col-nullable-cb { width: auto; accent-color: #6B8AAF; }
+.modal-col-del { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 2px 4px; flex-shrink: 0; }
+.modal-col-del:hover { color: #e74c3c; }
+.modal-col-label { font-size: 10px; color: #555; }
+.col-drag-handle { cursor: grab; color: #555; font-size: 14px; flex-shrink: 0; user-select: none; padding: 0 2px; }
+.col-drag-handle:hover { color: #6B8AAF; }
+.modal-col-row.col-dragging { opacity: 0.4; }
+.modal-col-row.col-drag-over { border-top: 2px solid #6B8AAF; }
+
+/* FK section in modal */
+.modal-fk-section { margin-top: 16px; border-top: 1px solid #2a2a3a; padding-top: 12px; }
+.modal-fk-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 12px; color: #ccc; padding: 4px 8px; background: #0f0f18; border-radius: 5px; }
+.modal-fk-row span { color: #6B8AAF; }
+
+/* Drag reorder */
+.table-card.dragging { opacity: 0.4; }
+.table-card.drag-over { border-top: 2px solid #6B8AAF; }
+
+/* Persist indicator */
+.persist-indicator { font-size: 11px; margin-left: 8px; }
+
+/* Changelog table */
+.changelog-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.changelog-table th { text-align: left; padding: 4px 6px; color: #6B8AAF; border-bottom: 1px solid #2a2a3a; cursor: pointer; user-select: none; white-space: nowrap; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+.changelog-table th:hover { color: #e0e0e0; }
+.changelog-table th .sort-arrow { font-size: 8px; margin-left: 3px; color: #555; }
+.changelog-table th.sorted .sort-arrow { color: #E0C45A; }
+.changelog-table td { padding: 4px 6px; border-bottom: 1px solid #1a1a2a; vertical-align: top; }
+.changelog-table tr:hover td { background: rgba(107,138,175,0.06); }
+.changelog-table .cl-type { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; white-space: nowrap; }
+.changelog-table .cl-type.added { background: rgba(42,157,143,0.2); color: #2A9D8F; }
+.changelog-table .cl-type.modified { background: rgba(224,196,90,0.2); color: #E0C45A; }
+.changelog-table .cl-type.removed { background: rgba(231,76,60,0.2); color: #e74c3c; }
+.changelog-table .cl-type.note { background: rgba(155,89,182,0.2); color: #9B59B6; }
+.changelog-table .cl-type.comment { background: rgba(107,138,175,0.2); color: #6B8AAF; }
+.changelog-table .cl-notes { color: #999; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changelog-table .cl-table { color: #e0e0e0; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-20 02:42pm</span>
+  <div class="version-toggle">
+    <button id="btnV1" onclick="setVersion('v1')">V1</button>
+    <button id="btnV2" class="active" onclick="setVersion('v2')">V2</button>
+  </div>
+  <div class="version-toggle">
+    <button id="btnDetail" class="active" onclick="setViewMode('detail')">Detail</button>
+    <button id="btnCompact" onclick="setViewMode('compact')">Compact</button>
+    <button id="btnCoreFlow" onclick="setViewMode('core')">Core</button>
+  </div>
+  <input type="text" class="search-box" id="searchBox" placeholder="Search tables..." oninput="filterTables()">
+  <div class="stats">
+    <span><span class="num" id="statTables">0</span> tables</span>
+    <span><span class="num" id="statViews">0</span> views</span>
+    <span><span class="num" id="statCols">0</span> columns</span>
+    <span><span class="num" id="statFKs">0</span> FKs</span>
+    <span style="font-size:10px;color:#999;font-style:italic">ID, audit, soft-delete hidden</span>
+    <span id="persistStatus" class="persist-indicator"></span>
+  </div>
+</div>
+
+<div class="main-layout">
+  <div class="canvas-wrap" id="canvasWrap">
+    <svg class="svg-overlay" id="svgOverlay"></svg>
+    <div class="canvas" id="canvas"></div>
+    <div class="cf-container" id="coreFlowContainer"><svg id="coreFlowSvg"></svg><div id="coreFlowContent"></div><button class="add-table-btn" onclick="openAddTable(true)" style="position:absolute;bottom:16px;right:16px;z-index:20">+ Add Table</button></div>
+  </div>
+  <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" style="display:none">&laquo;</button>
+  <div class="sidebar" id="sidebar">
+    <h2 style="display:flex;align-items:center;justify-content:space-between">Change Log <span><button onclick="resetSchema()" style="font-size:11px;background:none;border:1px solid #6b3a3a;color:#c97070;cursor:pointer;padding:3px 10px;border-radius:4px;margin-right:6px">Reset V2</button><button onclick="saveToGit()" style="font-size:11px;background:none;border:1px solid #2a2a3a;color:#888;cursor:pointer;padding:3px 10px;border-radius:4px">Save to Git</button></span></h2>
+    <div id="diffContent"><p class="no-diff">Switch to V2 to see differences.</p></div>
+    <div id="sidebarActions" style="margin-top:16px;display:none;">
+      <button class="add-table-btn" onclick="openAddComment()" style="width:100%;margin-bottom:8px">+ Add Comment</button>
+      <button class="add-table-btn" onclick="openAddTable()" style="width:100%">+ Add Table</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Schema V1: Parsed from SQL migrations at runtime ──
+const schemaV1 = { tables: {}, foreignKeys: [] };
+
+// ── V2: editable draft (deep clone) ──
+const schemaV2 = JSON.parse(JSON.stringify(schemaV1));
+
+// Domain grouping
+// Derived dynamically from table names — no hardcoded domain list needed
+
+function getDomain(tableName) {
+  return tableName.includes('_') ? tableName.split('_')[0] : tableName;
+}
+
+function buildGroups(schema) {
+  const groups = {};
+  for (const [t, tbl] of Object.entries(schema.tables)) {
+    const domain = getDomain(t);
+    if (!groups[domain]) groups[domain] = [];
+    groups[domain].push(t);
+  }
+  // Sort domain groups alphabetically
+  const ordered = {};
+  for (const g of Object.keys(groups).sort()) {
+    ordered[g] = groups[g];
+  }
+  // Apply saved table order
+  const savedOrder = schema.tableOrder || {};
+  for (const [g, tables] of Object.entries(ordered)) {
+    if (savedOrder[g]) {
+      const so = savedOrder[g];
+      tables.sort((a, b) => {
+        const ai = so.indexOf(a);
+        const bi = so.indexOf(b);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+    }
+  }
+  return ordered;
+}
+
+let currentVersion = 'v2';
+let hoveredTable = null;
+let sidebarManualCollapsed = false;
+let compactMode = false;
+let coreFlowMode = false;
+
+// ── localStorage persistence ──
+const STORAGE_KEY = 'aloha_schema_v2';
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(schemaV2));
+    updatePersistIndicator('saved');
+  } catch(e) {
+    console.error('localStorage save failed:', e);
+    updatePersistIndicator('error');
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (data) {
+      Object.assign(schemaV2, JSON.parse(data));
+      render();
+    }
+  } catch(e) {
+    console.error('localStorage load failed:', e);
+  }
+}
+
+function updatePersistIndicator(status) {
+  const el = document.getElementById('persistStatus');
+  if (!el) return;
+  const labels = { saved: 'saved', error: 'save error' };
+  const colors = { saved: '#2A9D8F', error: '#e74c3c' };
+  el.textContent = labels[status] || '';
+  el.style.color = colors[status] || '#555';
+  if (status === 'saved') setTimeout(() => { el.textContent = ''; }, 1500);
+}
+
+const SOURCE_REPO = 'Hawaii-Farming/aloha-app';
+const VIEWER_REPO = 'lfeder/schema-viewer';
+const GITHUB_FILE = 'schema-changes.csv';
+const GH_TOKEN_KEY = 'aloha_gh_token';
+const SQL_DIR = 'supabase/migrations';
+
+function domainFromFilename(filename) {
+  // e.g. "20260319_015_invnt_item.sql" → extract prefix after the sequence number
+  const m = filename.match(/^\d+_\d+_([a-z]+)/);
+  if (!m) return 'unknown';
+  const prefix = m[1];
+  if (prefix === 'grow') return 'org';
+  return prefix;
+}
+
+// ── SQL parser: extracts schema from migration files ──
+
+function splitTopLevel(str) {
+  const parts = [];
+  let depth = 0, current = '';
+  for (const ch of str) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+function parseViewColumns(sqlText) {
+  // Find the last top-level SELECT (after CTEs)
+  const asIdx = sqlText.search(/\bAS\b/i);
+  if (asIdx === -1) return [];
+  const body = sqlText.slice(asIdx + 2);
+
+  let depth = 0, lastSelectIdx = -1;
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === '(') depth++;
+    else if (body[i] === ')') depth--;
+    if (depth === 0 && /^SELECT\b/i.test(body.slice(i))) lastSelectIdx = i;
+  }
+  if (lastSelectIdx === -1) return [];
+
+  const afterSelect = body.slice(lastSelectIdx + 6);
+  depth = 0;
+  let fromIdx = -1;
+  for (let i = 0; i < afterSelect.length; i++) {
+    if (afterSelect[i] === '(') depth++;
+    else if (afterSelect[i] === ')') depth--;
+    if (depth === 0 && /^FROM\b/i.test(afterSelect.slice(i))) { fromIdx = i; break; }
+  }
+  if (fromIdx === -1) return [];
+
+  const selectBody = afterSelect.slice(0, fromIdx);
+  const parts = splitTopLevel(selectBody);
+  const columns = [];
+
+  for (const part of parts) {
+    const cleaned = part.replace(/--[^\n]*/g, '').trim();
+    if (!cleaned) continue;
+    const asMatch = cleaned.match(/\bAS\s+(\w+)\s*$/i);
+    if (asMatch) {
+      columns.push({ name: asMatch[1], type: 'TEXT', nullable: true });
+    } else {
+      const bare = cleaned.match(/(?:\w+\.)?(\w+)\s*$/);
+      if (bare) columns.push({ name: bare[1], type: 'TEXT', nullable: true });
+    }
+  }
+  return columns;
+}
+
+function parseSqlSchema(sqlText, domain) {
+  const tables = {};
+  const foreignKeys = [];
+  const isView = /CREATE\s+OR\s+REPLACE\s+VIEW/i.test(sqlText);
+
+  if (isView) {
+    const viewMatch = sqlText.match(/CREATE\s+OR\s+REPLACE\s+VIEW\s+(\w+)/i);
+    if (!viewMatch) return { tables, foreignKeys };
+    const viewName = viewMatch[1];
+    tables[viewName] = { kind: 'view', domain, columns: parseViewColumns(sqlText), description: '' };
+  } else {
+    const tableMatch = sqlText.match(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)/i);
+    if (!tableMatch) return { tables, foreignKeys };
+    const tableName = tableMatch[1];
+
+    const bodyMatch = sqlText.match(/CREATE\s+TABLE[^(]*\(([\s\S]*?)\);/i);
+    if (!bodyMatch) return { tables, foreignKeys };
+
+    const columns = [];
+    const parts = splitTopLevel(bodyMatch[1]);
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed || /^\s*--/.test(trimmed)) continue;
+      if (/^CONSTRAINT\s/i.test(trimmed)) continue;
+
+      const colMatch = trimmed.match(/^(\w+)\s+([\w]+(?:\s*\([^)]*\))?(?:\s*\[\])?)/i);
+      if (!colMatch) continue;
+      const colName = colMatch[1];
+      if (['CONSTRAINT', 'PRIMARY', 'UNIQUE', 'CHECK', 'FOREIGN'].includes(colName.toUpperCase())) continue;
+
+      let colType = colMatch[2].toUpperCase();
+
+      const nullable = !/\bNOT\s+NULL\b/i.test(trimmed);
+
+      let defaultVal = undefined;
+      const defMatch = trimmed.match(/DEFAULT\s+('(?:[^']|\\')*'|[^\s,)]+(?:\([^)]*\))?)/i);
+      if (defMatch) defaultVal = defMatch[1].replace(/^'|'$/g, '');
+
+      const fkMatch = trimmed.match(/REFERENCES\s+([\w.]+)\((\w+)\)/i);
+      if (fkMatch) {
+        foreignKeys.push({ from: `${tableName}.${colName}`, to: `${fkMatch[1]}.${fkMatch[2]}` });
+      }
+
+      columns.push({
+        name: colName,
+        type: colType,
+        nullable,
+        ...(defaultVal !== undefined ? { default: defaultVal } : {})
+      });
+    }
+
+    // Table description from COMMENT ON TABLE
+    let description = '';
+    const commentMatch = sqlText.match(/COMMENT\s+ON\s+TABLE\s+\w+\s+IS\s+'((?:[^']|'')*?)'/i);
+    if (commentMatch) description = commentMatch[1].replace(/''/g, "'");
+
+    // Column descriptions from COMMENT ON COLUMN
+    const colCommentRe = /COMMENT\s+ON\s+COLUMN\s+\w+\.(\w+)\s+IS\s+'((?:[^']|'')*?)'/gi;
+    let m;
+    while ((m = colCommentRe.exec(sqlText)) !== null) {
+      const col = columns.find(c => c.name === m[1]);
+      if (col) col.description = m[2].replace(/''/g, "'");
+    }
+
+    tables[tableName] = { kind: 'table', domain, columns, description };
+  }
+
+  return { tables, foreignKeys };
+}
+
+function getGhToken() {
+  return localStorage.getItem(GH_TOKEN_KEY);
+}
+
+function promptGhToken() {
+  const token = prompt('Enter a GitHub personal access token (needs repo scope).\nThis is stored in your browser only.');
+  if (token) localStorage.setItem(GH_TOKEN_KEY, token);
+  return token;
+}
+
+async function fetchFile(path, token) {
+  const headers = { 'Accept': 'application/vnd.github.v3.raw' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const res = await fetch(`https://api.github.com/repos/${SOURCE_REPO}/contents/${path}?ref=main`, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${path}`);
+  return res.text();
+}
+
+async function discoverSqlFiles(token) {
+  const headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const res = await fetch(
+    `https://api.github.com/repos/${SOURCE_REPO}/contents/${SQL_DIR}?ref=main`,
+    { headers }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status} listing ${SQL_DIR}`);
+  const entries = await res.json();
+  return entries.filter(e => e.name.endsWith('.sql')).map(e => ({ path: e.path, name: e.name }));
+}
+
+async function loadSchemaFromSql() {
+  const token = getGhToken();
+
+  // Check localStorage cache (< 5 min old = fresh)
+  const CACHE_KEY = 'aloha_schema_v1_cache';
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+      schemaV1.tables = cached.tables;
+      schemaV1.foreignKeys = cached.foreignKeys;
+      return { ok: true, tableCount: Object.keys(cached.tables).length, fromCache: true };
+    }
+  } catch(e) { /* no cache or corrupt */ }
+
+  try {
+    const sqlFiles = await discoverSqlFiles(token);
+    const allTables = {};
+    const allFks = [];
+
+    const results = await Promise.all(
+      sqlFiles.map(async ({ path, name }) => {
+        const domain = domainFromFilename(name);
+        const text = await fetchFile(path, token);
+        return parseSqlSchema(text, domain);
+      })
+    );
+
+    for (const result of results) {
+      Object.assign(allTables, result.tables);
+      allFks.push(...result.foreignKeys);
+    }
+
+    const tableNames = new Set(Object.keys(allTables));
+    const validFks = allFks.filter(fk => tableNames.has(fk.to.split('.')[0]));
+
+    schemaV1.tables = allTables;
+    schemaV1.foreignKeys = validFks;
+
+    // Cache for rate limiting
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ tables: allTables, foreignKeys: validFks, ts: Date.now() }));
+    } catch(e) { /* storage full */ }
+
+    return { ok: true, tableCount: Object.keys(allTables).length };
+  } catch (e) {
+    if (e.message.includes('401') || e.message.includes('403')) {
+      localStorage.removeItem(GH_TOKEN_KEY);
+    }
+    return { ok: false, error: e.message };
+  }
+}
+
+// ── Startup: try live SQL → then restore V2 edits from localStorage ──
+(async function startup() {
+  let status = '';
+  let statusColor = '#E0C45A';
+
+  // Try live SQL fetch to update V1 (source of truth)
+  const sqlResult = await loadSchemaFromSql();
+  if (sqlResult.ok) {
+    // Reset V2 to fresh clone of live V1
+    const fresh = JSON.parse(JSON.stringify(schemaV1));
+    schemaV2.tables = fresh.tables;
+    schemaV2.foreignKeys = fresh.foreignKeys;
+    status = `${sqlResult.tableCount} tables (${sqlResult.fromCache ? 'cached' : 'live'})`;
+    statusColor = '#2A9D8F';
+  }
+
+  // Layer saved V2 edits on top (localStorage first, then git JSON)
+  const savedData = localStorage.getItem(STORAGE_KEY);
+  if (savedData) {
+    try {
+      const saved = JSON.parse(savedData);
+      if (saved.tables) {
+        schemaV2.tables = saved.tables;
+        // Carry over descriptions from V1 (live MD data) for tables and columns that don't have one
+        const renames = saved.renames || {};
+        for (const [name, tbl] of Object.entries(schemaV2.tables)) {
+          const v1Name = renames[name] || name;
+          const v1Tbl = schemaV1.tables[v1Name];
+          if (!tbl.description && v1Tbl?.description) {
+            tbl.description = v1Tbl.description;
+          }
+          if (v1Tbl && tbl.columns) {
+            const v1ColMap = Object.fromEntries((v1Tbl.columns || []).map(c => [c.name, c]));
+            for (const col of tbl.columns) {
+              if (!col.description && v1ColMap[col.name]?.description) {
+                col.description = v1ColMap[col.name].description;
+              }
+            }
+          }
+        }
+      }
+      // Add any new V1 tables that aren't in the saved V2
+      const renamedOldNames = new Set(Object.values(saved.renames || {}));
+      for (const [v1Name, v1Tbl] of Object.entries(schemaV1.tables)) {
+        if (!schemaV2.tables[v1Name] && !renamedOldNames.has(v1Name)) {
+          schemaV2.tables[v1Name] = JSON.parse(JSON.stringify(v1Tbl));
+        }
+      }
+      if (saved.foreignKeys) schemaV2.foreignKeys = saved.foreignKeys;
+      if (saved.renames) schemaV2.renames = saved.renames;
+      if (saved.coreTables) schemaV2.coreTables = saved.coreTables;
+      if (saved.corePositions) schemaV2.corePositions = saved.corePositions;
+      if (saved.tableOrder) schemaV2.tableOrder = saved.tableOrder;
+      if (saved.comments) schemaV2.comments = saved.comments;
+      const notesCount = Object.values(schemaV2.tables).filter(t => t.notes && t.notes.trim()).length;
+      const commentCount = (saved.comments || []).length;
+      if (notesCount > 0 || commentCount > 0) status += ` + ${notesCount} notes, ${commentCount} comments`;
+    } catch(e) { console.error('localStorage load failed:', e); }
+  }
+
+  // If no localStorage edits, try loading V2 from git (for GitHub Pages)
+  if (!savedData) {
+    const gitResult = await loadFromGit();
+    if (gitResult.ok) {
+      // Carry over descriptions from V1 for git-loaded data too
+      const renames = schemaV2.renames || {};
+      for (const [name, tbl] of Object.entries(schemaV2.tables)) {
+        const v1Name = renames[name] || name;
+        const v1Tbl = schemaV1.tables[v1Name];
+        if (!tbl.description && v1Tbl?.description) tbl.description = v1Tbl.description;
+        if (v1Tbl && tbl.columns) {
+          const v1ColMap = Object.fromEntries((v1Tbl.columns || []).map(c => [c.name, c]));
+          for (const col of tbl.columns) {
+            if (!col.description && v1ColMap[col.name]?.description) col.description = v1ColMap[col.name].description;
+          }
+        }
+      }
+      // Add any new V1 tables that aren't in the git-loaded V2
+      const renamedOldNames2 = new Set(Object.values(renames));
+      for (const [v1Name, v1Tbl] of Object.entries(schemaV1.tables)) {
+        if (!schemaV2.tables[v1Name] && !renamedOldNames2.has(v1Name)) {
+          schemaV2.tables[v1Name] = JSON.parse(JSON.stringify(v1Tbl));
+        }
+      }
+      status += ' + git edits';
+    }
+  }
+
+  if (!sqlResult.ok) {
+    status = `offline — ${sqlResult.error || 'fetch failed'}`;
+    statusColor = '#e74c3c';
+  }
+
+  render();
+  document.getElementById('persistStatus').textContent = status;
+  document.getElementById('persistStatus').style.color = statusColor;
+})();
+
+function setViewMode(mode) {
+  compactMode = mode === 'compact';
+  coreFlowMode = mode === 'core';
+  document.getElementById('btnDetail').classList.toggle('active', mode === 'detail');
+  document.getElementById('btnCompact').classList.toggle('active', mode === 'compact');
+  document.getElementById('btnCoreFlow').classList.toggle('active', mode === 'core');
+  document.getElementById('canvas').classList.toggle('compact', compactMode);
+  if (coreFlowMode) {
+    document.getElementById('canvas').style.display = 'none';
+    document.getElementById('svgOverlay').style.display = 'none';
+    renderCoreFlow();
+    document.getElementById('coreFlowContainer').style.display = 'block';
+  } else {
+    document.getElementById('coreFlowContainer').style.display = 'none';
+    document.getElementById('canvas').style.display = '';
+    document.getElementById('svgOverlay').style.display = '';
+    render();
+  }
+}
+
+function sortColumns(mergedCols, tableName, fkCols) {
+  const pks = [];
+  const fks = [];
+  const rest = [];
+  for (const mc of mergedCols) {
+    if (mc.col.name === 'id') pks.push(mc);
+    else if (fkCols[tableName] && fkCols[tableName].has(mc.col.name)) fks.push(mc);
+    else rest.push(mc);
+  }
+  return [...pks, ...fks, ...rest];
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebarToggle');
+  sidebarManualCollapsed = !sidebar.classList.contains('collapsed');
+  sidebar.classList.toggle('collapsed');
+  toggle.innerHTML = sidebar.classList.contains('collapsed') ? '&raquo;' : '&laquo;';
+  requestAnimationFrame(drawLines);
+}
+
+function getFkColumns(schema) {
+  const fkCols = {};
+  for (const fk of schema.foreignKeys) {
+    const [tbl, col] = fk.from.split('.');
+    if (!fkCols[tbl]) fkCols[tbl] = new Set();
+    fkCols[tbl].add(col);
+  }
+  return fkCols;
+}
+
+// ── Diff engine ──
+function computeDiff(v1, v2) {
+  const diffs = [];
+  const renames = v2.renames || {};
+  const v2Names = Object.keys(v2.tables);
+  const matchedV1 = new Set();
+  for (const v2Name of v2Names) {
+    // Check for rename: find V1 name via renames map
+    const v1Name = renames[v2Name] || v2Name;
+    if (v1Name in v1.tables) {
+      matchedV1.add(v1Name);
+      if (v1Name !== v2Name) {
+        diffs.push({ type: 'modified', table: v2Name, detail: `Renamed from "${v1Name}"` });
+      }
+      const hiddenCols = new Set(['created_at','updated_at','created_by','updated_by','is_active','is_deleted','is_deleted']);
+      const c1 = v1.tables[v1Name].columns.filter(c => !hiddenCols.has(c.name));
+      const c2 = v2.tables[v2Name].columns.filter(c => !hiddenCols.has(c.name));
+      const c1Map = Object.fromEntries(c1.map(c => [c.name, c]));
+      const c2Map = Object.fromEntries(c2.map(c => [c.name, c]));
+      const allCols = new Set([...Object.keys(c1Map), ...Object.keys(c2Map)]);
+      for (const col of allCols) {
+        if (col in c1Map && !(col in c2Map)) {
+          diffs.push({ type: 'removed', table: v2Name, detail: `Column "${col}" removed` });
+        } else if (!(col in c1Map) && col in c2Map) {
+          diffs.push({ type: 'added', table: v2Name, detail: `Column "${col}" added` });
+        } else {
+          const a = c1Map[col], b = c2Map[col];
+          const changes = [];
+          if (a.type !== b.type) changes.push(`type: ${a.type} -> ${b.type}`);
+          if (a.nullable !== b.nullable) changes.push(`nullable: ${a.nullable} -> ${b.nullable}`);
+          if ((a.default || '') !== (b.default || '')) changes.push(`default: ${a.default || 'none'} -> ${b.default || 'none'}`);
+          if (changes.length) {
+            diffs.push({ type: 'modified', table: v2Name, detail: `Column "${col}": ${changes.join(', ')}` });
+          }
+        }
+      }
+      // Check column order change
+      const c1Names = c1.map(c => c.name).filter(n => n in c2Map);
+      const c2Names = c2.map(c => c.name).filter(n => n in c1Map);
+      if (c1Names.length && c1Names.join(',') !== c2Names.join(',')) {
+        diffs.push({ type: 'modified', table: v2Name, detail: 'Column order changed' });
+      }
+    } else {
+      diffs.push({ type: 'added', table: v2Name, detail: 'Table added' });
+    }
+  }
+  for (const v1Name of Object.keys(v1.tables)) {
+    if (!matchedV1.has(v1Name)) {
+      diffs.push({ type: 'removed', table: v1Name, detail: 'Table removed' });
+    }
+  }
+  return diffs;
+}
+
+function getTableDiffStatus(diffs, tableName) {
+  const tbl = schemaV2.tables[tableName];
+  const hasNotes = tbl && tbl.notes && tbl.notes.trim();
+  const tableDiffs = diffs.filter(d => d.table === tableName);
+  if (!tableDiffs.length && !hasNotes) return null;
+  if (tableDiffs.some(d => d.detail === 'Table added')) return 'added';
+  if (tableDiffs.some(d => d.detail === 'Table removed')) return 'removed';
+  return 'modified';
+}
+
+let changelogSort = { col: 'table', asc: true };
+
+function buildChangelogRows(diffs) {
+  const rows = [];
+  // Schema diffs
+  for (const d of diffs) {
+    rows.push({ table: d.table, type: d.type, detail: d.detail, notes: '' });
+  }
+  // Notes on any table (even without schema changes)
+  for (const [name, tbl] of Object.entries(schemaV2.tables)) {
+    if (tbl.notes && tbl.notes.trim()) {
+      const alreadyHasRow = rows.some(r => r.table === name);
+      if (alreadyHasRow) {
+        rows.filter(r => r.table === name).forEach(r => r.notes = tbl.notes.trim());
+      } else {
+        rows.push({ table: name, type: 'note', detail: 'Has notes', notes: tbl.notes.trim() });
+      }
+    }
+  }
+  // Generic comments
+  const comments = schemaV2.comments || [];
+  for (let i = 0; i < comments.length; i++) {
+    rows.push({ table: '—', type: 'comment', detail: '', notes: comments[i], commentIdx: i });
+  }
+  return rows;
+}
+
+function sortChangelogRows(rows) {
+  const { col, asc } = changelogSort;
+  const dir = asc ? 1 : -1;
+  return rows.sort((a, b) => {
+    let av = a[col] || '', bv = b[col] || '';
+    if (typeof av === 'string') av = av.toLowerCase();
+    if (typeof bv === 'string') bv = bv.toLowerCase();
+    return av < bv ? -dir : av > bv ? dir : 0;
+  });
+}
+
+function renderChangelog(diffs, container) {
+  const rows = buildChangelogRows(diffs);
+  if (!rows.length) {
+    container.innerHTML = '<p class="no-diff">No changes or notes yet. Click any table to start.</p>';
+    return;
+  }
+  const sorted = sortChangelogRows(rows);
+  const arrow = (col) => `<span class="sort-arrow">${changelogSort.col === col ? (changelogSort.asc ? '\u25B2' : '\u25BC') : '\u25B4'}</span>`;
+  const sortedClass = (col) => changelogSort.col === col ? ' sorted' : '';
+  let html = `<table class="changelog-table">
+    <thead><tr>
+      <th class="${sortedClass('table')}" onclick="onChangelogSort('table')">Table ${arrow('table')}</th>
+      <th class="${sortedClass('type')}" onclick="onChangelogSort('type')">Type ${arrow('type')}</th>
+      <th class="${sortedClass('detail')}" onclick="onChangelogSort('detail')">Detail ${arrow('detail')}</th>
+      <th class="${sortedClass('notes')}" onclick="onChangelogSort('notes')">Notes ${arrow('notes')}</th>
+      <th></th>
+    </tr></thead><tbody>`;
+  for (const r of sorted) {
+    const safeDetail = r.detail.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    if (r.type === 'comment') {
+      html += `<tr onclick="openEditComment(${r.commentIdx})" style="cursor:pointer">
+        <td class="cl-table">${r.table}</td>
+        <td><span class="cl-type ${r.type}">${r.type}</span></td>
+        <td></td>
+        <td class="cl-notes" title="${(r.notes || '').replace(/"/g, '&quot;')}">${r.notes || ''}</td>
+        <td><button onclick="event.stopPropagation();deleteComment(${r.commentIdx})" style="background:none;border:1px solid #2a2a3a;color:#e74c3c;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="Delete comment">&times;</button></td>
+      </tr>`;
+    } else {
+      const clickable = schemaV2.tables[r.table] ? ` onclick="openEditTable('${r.table}')" style="cursor:pointer"` : '';
+      html += `<tr${clickable}>
+        <td class="cl-table">${r.table}</td>
+        <td><span class="cl-type ${r.type}">${r.type}</span></td>
+        <td>${r.detail}</td>
+        <td class="cl-notes" title="${(r.notes || '').replace(/"/g, '&quot;')}">${r.notes || ''}</td>
+        <td><button onclick="event.stopPropagation();revertChange('${r.table}','${r.type}','${safeDetail}')" style="background:none;border:1px solid #2a2a3a;color:#e74c3c;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="Revert this change">&times;</button></td>
+      </tr>`;
+    }
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function revertChange(table, type, detail) {
+  if (type === 'note') {
+    // Remove notes
+    if (schemaV2.tables[table]) schemaV2.tables[table].notes = '';
+  } else if (type === 'added' && detail === 'Table added') {
+    // Delete the added table
+    delete schemaV2.tables[table];
+    schemaV2.foreignKeys = schemaV2.foreignKeys.filter(fk => !fk.from.startsWith(table + '.') && !fk.to.startsWith(table + '.'));
+  } else if (type === 'removed' && detail === 'Table removed') {
+    // Restore from V1
+    if (schemaV1.tables[table]) {
+      schemaV2.tables[table] = JSON.parse(JSON.stringify(schemaV1.tables[table]));
+      for (const fk of schemaV1.foreignKeys) {
+        if (fk.from.startsWith(table + '.')) schemaV2.foreignKeys.push(JSON.parse(JSON.stringify(fk)));
+      }
+    }
+  } else if (type === 'modified' && detail.startsWith('Column')) {
+    // Revert single column to V1
+    const match = detail.match(/Column "(\w+)"/);
+    if (match) {
+      const colName = match[1];
+      const v1t = schemaV1.tables[table];
+      if (v1t) {
+        const v1col = v1t.columns.find(c => c.name === colName);
+        if (v1col) {
+          const idx = schemaV2.tables[table].columns.findIndex(c => c.name === colName);
+          if (idx !== -1) schemaV2.tables[table].columns[idx] = JSON.parse(JSON.stringify(v1col));
+        }
+      }
+    }
+  }
+  save();
+  render();
+}
+
+function onChangelogSort(col) {
+  if (changelogSort.col === col) changelogSort.asc = !changelogSort.asc;
+  else { changelogSort.col = col; changelogSort.asc = true; }
+  render();
+}
+
+
+
+function csvEscape(v) { return '"' + (v || '').replace(/"/g, '""') + '"'; }
+
+function buildCsvFromChangelog() {
+  const diffs = computeDiff(schemaV1, schemaV2);
+  const rows = buildChangelogRows(diffs);
+  const lines = ['table,type,detail,notes'];
+  for (const r of rows) {
+    lines.push([csvEscape(r.table), csvEscape(r.type), csvEscape(r.detail), csvEscape(r.notes)].join(','));
+  }
+  return lines.join('\n');
+}
+
+function parseCsv(text) {
+  const rows = [];
+  const lines = text.split('\n');
+  if (lines.length < 2) return rows;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const vals = [];
+    let cur = '', inQ = false;
+    for (let j = 0; j < line.length; j++) {
+      const c = line[j];
+      if (inQ) {
+        if (c === '"' && line[j+1] === '"') { cur += '"'; j++; }
+        else if (c === '"') inQ = false;
+        else cur += c;
+      } else {
+        if (c === '"') inQ = true;
+        else if (c === ',') { vals.push(cur); cur = ''; }
+        else cur += c;
+      }
+    }
+    vals.push(cur);
+    if (vals.length >= 4) rows.push({ table: vals[0], type: vals[1], detail: vals[2], notes: vals[3] });
+  }
+  return rows;
+}
+
+async function pushFile(token, path, content, message) {
+  const encoded = btoa(unescape(encodeURIComponent(content)));
+  let sha;
+  const getRes = await fetch(`https://api.github.com/repos/${VIEWER_REPO}/contents/${path}`, {
+    headers: { 'Authorization': `token ${token}` }
+  });
+  if (getRes.ok) sha = (await getRes.json()).sha;
+
+  const body = { message, content: encoded, branch: 'main' };
+  if (sha) body.sha = sha;
+
+  return fetch(`https://api.github.com/repos/${VIEWER_REPO}/contents/${path}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+}
+
+async function saveToGit() {
+  let token = localStorage.getItem(GH_TOKEN_KEY);
+  if (!token) {
+    token = prompt('Enter a GitHub personal access token (needs repo scope).\nThis is stored in your browser only.');
+    if (!token) return;
+    localStorage.setItem(GH_TOKEN_KEY, token);
+  }
+
+  try {
+    // Push both JSON (full state) and CSV (readable changelog)
+    const jsonContent = JSON.stringify(schemaV2, null, 2);
+    const csvContent = buildCsvFromChangelog();
+
+    const [jsonRes, csvRes] = await Promise.all([
+      pushFile(token, 'schema-v2.json', jsonContent, 'Update V2 schema'),
+      pushFile(token, GITHUB_FILE, csvContent, 'Update changelog CSV')
+    ]);
+
+    if (jsonRes.ok && csvRes.ok) {
+      updatePersistIndicator('saved');
+      alert('Changes saved to GitHub.');
+    } else {
+      const err = await (jsonRes.ok ? csvRes : jsonRes).json();
+      if (err.message?.includes('Bad credentials')) {
+        localStorage.removeItem(GH_TOKEN_KEY);
+        alert('Invalid token. Cleared — try again.');
+      } else {
+        alert('Save failed: ' + err.message);
+      }
+    }
+  } catch(e) {
+    alert('Save failed: ' + e.message);
+  }
+}
+
+function resetSchema() {
+  const diffs = computeDiff(schemaV1, schemaV2);
+  const rows = buildChangelogRows(diffs);
+  if (rows.length === 0) {
+    alert('Nothing to reset — V2 is already identical to V1.');
+    return;
+  }
+  if (!confirm('This will:\n1. Download the current changelog as a dated CSV\n2. Reset V2 to an exact copy of V1\n\nContinue?')) return;
+
+  // Download current changelog as dated CSV
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+  const csvContent = buildCsvFromChangelog();
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `schema-changes-${dateStr}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  // Clear localStorage and reload
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+async function loadFromGit() {
+  try {
+    const token = getGhToken();
+    const headers = { 'Accept': 'application/vnd.github.v3.raw' };
+    if (token) headers['Authorization'] = `token ${token}`;
+    const jsonRes = await fetch(`https://api.github.com/repos/${VIEWER_REPO}/contents/schema-v2.json?ref=main`, { headers });
+    if (!jsonRes.ok) return { ok: false, error: `JSON HTTP ${jsonRes.status}` };
+    const data = await jsonRes.json();
+    if (data.tables) {
+      schemaV2.tables = data.tables;
+      schemaV2.foreignKeys = data.foreignKeys || schemaV2.foreignKeys;
+      if (data.coreTables) schemaV2.coreTables = data.coreTables;
+      if (data.corePositions) schemaV2.corePositions = data.corePositions;
+      if (data.tableOrder) schemaV2.tableOrder = data.tableOrder;
+      if (data.comments) schemaV2.comments = data.comments;
+      if (data.renames) schemaV2.renames = data.renames;
+    }
+    return { ok: true };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function getMergedColumns(tableName, v2Cols) {
+  if (currentVersion !== 'v2') return v2Cols.map(col => ({ col, status: null }));
+  const v1Table = schemaV1.tables[tableName];
+  if (!v1Table) return v2Cols.map(col => ({ col, status: 'added' }));
+  const v1Map = Object.fromEntries(v1Table.columns.map(c => [c.name, c]));
+  const v2Map = Object.fromEntries(v2Cols.map(c => [c.name, c]));
+  const result = [];
+  for (const col of v2Cols) {
+    if (!(col.name in v1Map)) {
+      result.push({ col, status: 'added' });
+    } else {
+      const v1c = v1Map[col.name];
+      const changes = [];
+      if (v1c.type !== col.type) changes.push(`type: ${v1c.type}\u2192${col.type}`);
+      if (v1c.nullable !== col.nullable) changes.push(`nullable: ${v1c.nullable}\u2192${col.nullable}`);
+      if ((v1c.default || '') !== (col.default || '')) changes.push(`default: ${v1c.default || 'none'}\u2192${col.default || 'none'}`);
+      result.push({ col, status: changes.length ? 'modified' : null, changes: changes.join(', ') });
+    }
+  }
+  for (const col of v1Table.columns) {
+    if (!(col.name in v2Map)) {
+      result.push({ col, status: 'removed' });
+    }
+  }
+  return result;
+}
+
+function render() {
+  const schema = currentVersion === 'v1' ? schemaV1 : schemaV2;
+  const diffs = currentVersion === 'v2' ? computeDiff(schemaV1, schemaV2) : [];
+  const fkCols = getFkColumns(schema);
+  const fkTargets = {};
+  for (const fk of schema.foreignKeys) fkTargets[fk.from] = fk.to;
+  const canvas = document.getElementById('canvas');
+  const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+
+  // Stats
+  const tableNames = Object.keys(schema.tables);
+  let totalCols = 0, tableCount = 0, viewCount = 0;
+  for (const t of tableNames) {
+    totalCols += schema.tables[t].columns.length;
+    if (schema.tables[t].kind === 'view') viewCount++;
+    else tableCount++;
+  }
+  document.getElementById('statTables').textContent = tableCount;
+  document.getElementById('statViews').textContent = viewCount;
+  document.getElementById('statCols').textContent = totalCols;
+  document.getElementById('statFKs').textContent = schema.foreignKeys.length;
+
+  // Sidebar
+  const sidebar = document.getElementById('sidebar');
+  const diffContent = document.getElementById('diffContent');
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  if (currentVersion === 'v2') {
+    sidebarToggle.style.display = 'block';
+    if (!sidebarManualCollapsed) sidebar.classList.remove('collapsed');
+    sidebarToggle.innerHTML = sidebar.classList.contains('collapsed') ? '&raquo;' : '&laquo;';
+    renderChangelog(diffs, diffContent);
+  } else {
+    sidebarToggle.style.display = 'none';
+    sidebar.classList.add('collapsed');
+  }
+
+  document.getElementById('btnV1').classList.toggle('active', currentVersion === 'v1');
+  document.getElementById('btnV2').classList.toggle('active', currentVersion === 'v2');
+  document.getElementById('sidebarActions').style.display = currentVersion === 'v2' ? 'block' : 'none';
+
+  // Render cards
+  let html = '';
+  for (const [domain, tables] of Object.entries(getActiveGroups())) {
+    const domainTables = tables.filter(t => t in schema.tables);
+    if (!domainTables.length) continue;
+    const anyVisible = domainTables.some(t => {
+      return !(searchTerm && !t.includes(searchTerm));
+    });
+    if (!anyVisible) continue;
+    html += `<div class="domain-group"><div class="domain-label">${domain}</div><div class="domain-cards">`;
+    for (const t of domainTables) {
+      const tbl = schema.tables[t];
+      const hidden = searchTerm && !t.includes(searchTerm);
+      const diffStatus = currentVersion === 'v2' ? getTableDiffStatus(diffs, t) : null;
+      const statusClass = diffStatus ? ` ${diffStatus}` : '';
+      const hiddenClass = hidden ? ' hidden' : '';
+      const viewClass = tbl.kind === 'view' ? ' is-view' : '';
+      const clickEdit = currentVersion === 'v2' ? ` onclick="openEditTable('${t}')" style="cursor:pointer"` : '';
+      html += `<div class="table-card${statusClass}${hiddenClass}${viewClass}" data-table="${t}" data-group="${domain}" draggable="true" ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)" onmouseenter="onCardHover('${t}')" onmouseleave="onCardLeave()"${clickEdit}>`;
+      const desc1 = (tbl.description || '').replace(/"/g, '&quot;');
+      html += `<div class="card-header"><span class="tname" title="${desc1}">${t}${tbl.kind === 'view' ? '<span class="tbadge">view</span>' : ''}</span></div>`;
+      html += `<div class="card-columns">`;
+      const mergedCols = sortColumns(getMergedColumns(t, tbl.columns), t, fkCols);
+      for (const mc of mergedCols) {
+        const col = mc.col;
+        const isPk = col.name === 'id';
+        const isFk = fkCols[t] && fkCols[t].has(col.name);
+        const isKey = isPk || isFk;
+        const colDiffClass = mc.status ? ` ${mc.status}` : '';
+        const isAudit = ['created_at','updated_at','created_by','updated_by','is_active','is_deleted'].includes(col.name);
+        const keyClass = isPk ? ' pk-row' : (isAudit ? ' crud-row' : (isKey ? '' : ' non-key'));
+        const nameClass = isPk ? 'col-name pk' : (isFk ? 'col-name fk' : 'col-name');
+        html += `<div class="col-row${colDiffClass}${keyClass}">`;
+        if (isFk) html += `<span class="col-fk-icon">&#128279;</span>`;
+        const colDescTip = (col.description || col.name).replace(/"/g, '&quot;');
+        html += `<span class="${nameClass}" title="${colDescTip}">${col.name}</span>`;
+        html += `<span class="col-type">${col.type}</span>`;
+        if (col.nullable) html += `<span class="col-null">null</span>`;
+        if (mc.status === 'modified' && mc.changes) html += `<span class="col-diff-hint" title="${mc.changes}">*</span>`;
+        if (isFk && fkTargets[t + '.' + col.name]) html += `<span class="fk-target" title="${fkTargets[t + '.' + col.name]}"> ${fkTargets[t + '.' + col.name]}</span>`;
+        html += `</div>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // Ungrouped V2 tables
+  if (currentVersion === 'v2') {
+    const allGrouped = new Set(Object.values(getActiveGroups()).flat());
+    const ungrouped = Object.keys(schema.tables).filter(t => !allGrouped.has(t));
+    if (ungrouped.length) {
+      html += `<div class="domain-group"><div class="domain-label">New (V2)</div><div class="domain-cards">`;
+      for (const t of ungrouped) {
+        const tbl = schema.tables[t];
+        const hidden = searchTerm && !t.includes(searchTerm);
+        html += `<div class="table-card added${hidden ? ' hidden' : ''}" data-table="${t}" data-group="New" draggable="true" ondragstart="onDragStart(event)" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)" onmouseenter="onCardHover('${t}')" onmouseleave="onCardLeave()" onclick="openEditTable('${t}')" style="cursor:pointer">`;
+        const desc2 = (tbl.description || '').replace(/"/g, '&quot;');
+        html += `<div class="card-header"><span class="tname" title="${desc2}">${t}</span></div>`;
+        html += `<div class="card-columns">`;
+        for (const col of tbl.columns) {
+          const isPk = col.name === 'id';
+          const isFk = fkCols[t] && fkCols[t].has(col.name);
+          const nameClass = isPk ? 'col-name pk' : (isFk ? 'col-name fk' : 'col-name');
+          const isAudit = ['created_at','updated_at','created_by','updated_by','is_active','is_deleted'].includes(col.name);
+          html += `<div class="col-row added${isPk ? ' pk-row' : (isAudit ? ' crud-row' : (isFk ? '' : ' non-key'))}">`;
+          if (isFk) html += `<span class="col-fk-icon">&#128279;</span>`;
+          const colDescTip2 = (col.description || col.name).replace(/"/g, '&quot;');
+          html += `<span class="${nameClass}" title="${colDescTip2}">${col.name}</span>`;
+          html += `<span class="col-type">${col.type}</span>`;
+          if (col.nullable) html += `<span class="col-null">null</span>`;
+          if (isFk && fkTargets[t + '.' + col.name]) html += `<span class="fk-target" title="${fkTargets[t + '.' + col.name]}"> ${fkTargets[t + '.' + col.name]}</span>`;
+          html += `</div>`;
+        }
+        html += `</div></div>`;
+      }
+      html += `</div></div>`;
+    }
+  }
+
+  canvas.innerHTML = html;
+  requestAnimationFrame(drawLines);
+}
+
+function onCardHover(tableName) {
+  hoveredTable = tableName;
+  const schema = currentVersion === 'v1' ? schemaV1 : schemaV2;
+  const connected = new Set();
+  connected.add(tableName);
+  for (const fk of schema.foreignKeys) {
+    const fromTable = fk.from.split('.')[0];
+    const toTable = fk.to.split('.')[0];
+    if (fromTable === tableName) connected.add(toTable);
+    if (toTable === tableName) connected.add(fromTable);
+  }
+  document.querySelectorAll('.table-card').forEach(card => {
+    if (connected.has(card.dataset.table)) card.classList.add('highlight');
+  });
+  drawLines();
+}
+
+function onCardLeave() {
+  hoveredTable = null;
+  document.querySelectorAll('.table-card').forEach(card => card.classList.remove('highlight'));
+  drawLines();
+}
+
+function drawLines() {
+  const svg = document.getElementById('svgOverlay');
+  const wrap = document.getElementById('canvasWrap');
+  const canvasEl = document.getElementById('canvas');
+  const schema = currentVersion === 'v1' ? schemaV1 : schemaV2;
+
+  svg.setAttribute('width', canvasEl.scrollWidth);
+  svg.setAttribute('height', canvasEl.scrollHeight);
+  svg.style.width = canvasEl.scrollWidth + 'px';
+  svg.style.height = canvasEl.scrollHeight + 'px';
+
+  let paths = '';
+  const cardEls = {};
+  canvasEl.querySelectorAll('.table-card').forEach(el => { cardEls[el.dataset.table] = el; });
+
+  for (const fk of schema.foreignKeys) {
+    const fromTable = fk.from.split('.')[0];
+    const toTable = fk.to.split('.')[0];
+    const fromEl = cardEls[fromTable];
+    const toEl = cardEls[toTable];
+    if (!fromEl || !toEl) continue;
+    if (fromEl.classList.contains('hidden') || toEl.classList.contains('hidden')) continue;
+
+    const isHighlighted = hoveredTable && (fromTable === hoveredTable || toTable === hoveredTable);
+    const baseOpacity = compactMode ? 0.4 : 0.15;
+    const opacity = hoveredTable ? (isHighlighted ? 0.8 : 0.05) : baseOpacity;
+    const strokeWidth = isHighlighted ? 2 : 1;
+
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+
+    const x1 = fromRect.left + fromRect.width / 2 - wrapRect.left + wrap.scrollLeft;
+    const y1 = fromRect.top + fromRect.height / 2 - wrapRect.top + wrap.scrollTop;
+    const x2 = toRect.left + toRect.width / 2 - wrapRect.left + wrap.scrollLeft;
+    const y2 = toRect.top + toRect.height / 2 - wrapRect.top + wrap.scrollTop;
+
+    const mx = (x1 + x2) / 2;
+    paths += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="#6B8AAF" stroke-opacity="${opacity}" stroke-width="${strokeWidth}"/>`;
+  }
+  svg.innerHTML = paths;
+}
+
+function setVersion(v) {
+  currentVersion = v;
+  render();
+}
+
+function filterTables() { render(); }
+
+// ── Modal editing system ──
+const COL_TYPES = ['TEXT','UUID','BOOLEAN','DATE','INT','INTEGER','NUMERIC','TIMESTAMPTZ','JSONB'];
+
+function getActiveGroups() {
+  const schema = currentVersion === 'v1' ? schemaV1 : schemaV2;
+  return buildGroups(schema);
+}
+
+function openEditTable(tableName) {
+  if (currentVersion !== 'v2') return;
+  const tbl = schemaV2.tables[tableName];
+  if (!tbl) return;
+  window._editingTable = tableName;
+
+  const auditCols = ['created_at','updated_at','created_by','updated_by','is_active','is_deleted'];
+  const editableCols = tbl.columns.filter(c => !auditCols.includes(c.name));
+  const colsHtml = editableCols.map((c, i) => colRowHtml(c, i, tableName)).join('');
+
+  showModal(`Edit: ${tableName}`, `
+    <div class="modal-field">
+      <label>Table Name</label>
+      <input type="text" id="editTableName" value="${tableName}">
+    </div>
+    <div class="modal-field">
+      <label>Description</label>
+      <textarea id="editTableDesc" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#e0e0e0;padding:7px 10px;border-radius:5px;font-size:13px;outline:none;resize:vertical;min-height:40px;font-family:inherit">${(tbl.description || '').replace(/</g,'&lt;')}</textarea>
+    </div>
+    <div class="modal-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="editTableCore" style="width:auto;accent-color:#6B8AAF"${getCoreSet().has(tableName) ? ' checked' : ''}>
+        Core table (shown in Core Flow)
+      </label>
+    </div>
+    <div class="modal-cols-header">
+      <span>Columns</span>
+      <button class="modal-add-col" onclick="addColumnRow()">+ Column</button>
+    </div>
+    <div id="editColList">${colsHtml}</div>
+    <div class="modal-field" style="margin-top:16px">
+      <label>Notes</label>
+      <textarea id="editTableNotes" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#e0e0e0;padding:7px 10px;border-radius:5px;font-size:13px;outline:none;resize:vertical;min-height:60px;font-family:inherit">${(tbl.notes || '').replace(/</g,'&lt;')}</textarea>
+    </div>
+  `, () => saveEditTable(tableName), [
+    { label: 'Delete Table', className: 'btn-danger', action: () => { deleteTable(tableName); closeModal(); } }
+  ]);
+}
+
+function openAddTable(markCore) {
+  window._addTableCore = !!markCore;
+  window._editingTable = '';
+  showModal('Add Table', `
+    <div class="modal-field">
+      <label>Table Name</label>
+      <input type="text" id="editTableName" placeholder="new_table">
+    </div>
+    <div class="modal-field">
+      <label>Description</label>
+      <textarea id="editTableDesc" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#e0e0e0;padding:7px 10px;border-radius:5px;font-size:13px;outline:none;resize:vertical;min-height:40px;font-family:inherit" placeholder="Table description..."></textarea>
+    </div>
+    <div class="modal-field">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="editTableCore" style="width:auto;accent-color:#6B8AAF"${markCore ? ' checked' : ''}>
+        Core table (shown in Core Flow)
+      </label>
+    </div>
+    <div class="modal-cols-header">
+      <span>Columns</span>
+      <button class="modal-add-col" onclick="addColumnRow()">+ Column</button>
+    </div>
+    <div id="editColList">
+      ${colRowHtml({ name: 'id', type: 'UUID', nullable: false, default: 'gen_random_uuid()' }, 0, '')}
+    </div>
+  `, () => saveNewTable());
+}
+
+function getV1Col(tableName, colName) {
+  const v1t = schemaV1.tables[tableName];
+  if (!v1t) return null;
+  return v1t.columns.find(c => c.name === colName) || null;
+}
+
+function colRowHtml(col, idx, tableName) {
+  const typeOptions = COL_TYPES.map(t => `<option value="${t}"${t === col.type ? ' selected' : ''}>${t}</option>`).join('');
+  const fkTarget = tableName ? (schemaV2.foreignKeys.find(fk => fk.from === tableName + '.' + col.name) || {}).to || '' : '';
+  const v1col = tableName ? getV1Col(tableName, col.name) : null;
+  const changed = v1col && (v1col.type !== col.type || v1col.nullable !== col.nullable || (v1col.default || '') !== (col.default || ''));
+  const highlight = changed ? 'border-left:3px solid #E0C45A;' : '';
+  const revertBtn = changed ? `<button class="modal-col-del" onclick="revertCol('${tableName}','${col.name}')" title="Revert to V1" style="color:#E0C45A">&#8635;</button>` : '';
+  const safeDesc = (col.description || '').replace(/"/g, '&quot;');
+  return `<div class="modal-col-row" data-idx="${idx}" style="${highlight}" draggable="true" ondragstart="onColDragStart(event)" ondragover="onColDragOver(event)" ondragleave="onColDragLeave(event)" ondrop="onColDrop(event)" ondragend="onColDragEnd(event)">
+    <span class="col-drag-handle" title="Drag to reorder">&#9776;</span>
+    <input class="col-name-input" value="${col.name}" placeholder="column_name">
+    <select class="col-type-input">${typeOptions}</select>
+    <label style="display:flex;align-items:center;gap:3px;flex-shrink:0"><input type="checkbox" class="col-nullable-cb"${col.nullable ? ' checked' : ''}><span class="modal-col-label">null</span></label>
+    <input style="width:90px;flex-shrink:0" class="col-default-input" value="${col.default || ''}" placeholder="default">
+    <input style="width:100px;flex-shrink:0" class="col-fk-input" value="${fkTarget}" placeholder="FK table.col">
+    <input style="flex:1;min-width:120px" class="col-desc-input" value="${safeDesc}" placeholder="description">
+    ${revertBtn}
+    <button class="modal-col-del" onclick="this.closest('.modal-col-row').remove()" title="Remove">&times;</button>
+  </div>`;
+}
+
+function revertCol(tableName, colName) {
+  const v1col = getV1Col(tableName, colName);
+  if (!v1col) return;
+  const tbl = schemaV2.tables[tableName];
+  const idx = tbl.columns.findIndex(c => c.name === colName);
+  if (idx === -1) return;
+  tbl.columns[idx] = JSON.parse(JSON.stringify(v1col));
+  save();
+  closeModal();
+  setTimeout(() => openEditTable(tableName), 50);
+}
+
+function addColumnRow() {
+  const list = document.getElementById('editColList');
+  const idx = list.children.length;
+  list.insertAdjacentHTML('beforeend', colRowHtml({ name: '', type: 'TEXT', nullable: true, default: '' }, idx, window._editingTable || ''));
+}
+
+// ── Column drag-to-reorder in modal ──
+let colDragEl = null;
+
+function onColDragStart(e) {
+  colDragEl = e.currentTarget;
+  colDragEl.classList.add('col-dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onColDragOver(e) {
+  e.preventDefault();
+  const target = e.currentTarget;
+  if (target === colDragEl) return;
+  target.classList.add('col-drag-over');
+}
+
+function onColDragLeave(e) {
+  e.currentTarget.classList.remove('col-drag-over');
+}
+
+function onColDrop(e) {
+  e.preventDefault();
+  const target = e.currentTarget;
+  target.classList.remove('col-drag-over');
+  if (!colDragEl || colDragEl === target) return;
+  const list = document.getElementById('editColList');
+  const rows = [...list.children];
+  const fromIdx = rows.indexOf(colDragEl);
+  const toIdx = rows.indexOf(target);
+  if (fromIdx < toIdx) target.after(colDragEl);
+  else list.insertBefore(colDragEl, target);
+}
+
+function onColDragEnd() {
+  if (colDragEl) colDragEl.classList.remove('col-dragging');
+  colDragEl = null;
+  document.querySelectorAll('.col-drag-over').forEach(el => el.classList.remove('col-drag-over'));
+}
+
+function readColumnsFromModal() {
+  const rows = document.querySelectorAll('#editColList .modal-col-row');
+  const cols = [];
+  const fks = [];
+  rows.forEach(row => {
+    const name = row.querySelector('.col-name-input').value.trim();
+    if (!name) return;
+    const desc = row.querySelector('.col-desc-input')?.value.trim() || undefined;
+    cols.push({
+      name,
+      type: row.querySelector('.col-type-input').value,
+      nullable: row.querySelector('.col-nullable-cb').checked,
+      default: row.querySelector('.col-default-input').value.trim() || undefined,
+      ...(desc ? { description: desc } : {})
+    });
+    const fkVal = row.querySelector('.col-fk-input').value.trim();
+    if (fkVal) fks.push({ colName: name, target: fkVal });
+  });
+  return { cols, fks };
+}
+
+function saveEditTable(origName) {
+  const newName = document.getElementById('editTableName').value.trim();
+  const { cols, fks } = readColumnsFromModal();
+  if (!newName || !cols.length) return;
+
+  const tbl = schemaV2.tables[origName];
+  const auditCols = tbl.columns.filter(c => ['created_at','updated_at','created_by','updated_by','is_active','is_deleted'].includes(c.name));
+  tbl.columns = [...cols, ...auditCols];
+  tbl.description = (document.getElementById('editTableDesc')?.value || '').trim();
+  tbl.notes = (document.getElementById('editTableNotes')?.value || '').trim();
+
+  const finalName = newName !== origName ? newName : origName;
+  schemaV2.foreignKeys = schemaV2.foreignKeys.filter(fk => !fk.from.startsWith(origName + '.'));
+  for (const fk of fks) {
+    schemaV2.foreignKeys.push({ from: finalName + '.' + fk.colName, to: fk.target });
+  }
+  // Audit fields (created_by, updated_by) are TEXT email — no FK needed
+
+  if (newName !== origName) {
+    schemaV2.tables[newName] = tbl;
+    delete schemaV2.tables[origName];
+    schemaV2.foreignKeys.forEach(fk => {
+      if (fk.to.startsWith(origName + '.')) fk.to = newName + '.' + fk.to.split('.')[1];
+    });
+    // Track rename so diff engine shows it as a rename, not delete+add
+    if (!schemaV2.renames) schemaV2.renames = {};
+    schemaV2.renames[newName] = origName;
+  }
+
+  const isCore = document.getElementById('editTableCore').checked;
+  const coreList = (schemaV2.coreTables || []).filter(t => t !== origName && t !== finalName);
+  if (isCore) coreList.push(finalName);
+  schemaV2.coreTables = coreList;
+
+  closeModal();
+  save();
+  if (coreFlowMode) renderCoreFlow();
+  else render();
+}
+
+function saveNewTable() {
+  const name = document.getElementById('editTableName').value.trim();
+  const { cols, fks } = readColumnsFromModal();
+  if (!name || !cols.length) return;
+  if (schemaV2.tables[name]) { alert('Table already exists'); return; }
+
+  const auditCols = [
+    { name: 'created_at', type: 'TIMESTAMPTZ', nullable: false, default: 'now()' },
+    { name: 'created_by', type: 'TEXT', nullable: true },
+    { name: 'updated_at', type: 'TIMESTAMPTZ', nullable: false, default: 'now()' },
+    { name: 'updated_by', type: 'TEXT', nullable: true }
+  ];
+  const description = (document.getElementById('editTableDesc')?.value || '').trim();
+  schemaV2.tables[name] = { kind: 'table', columns: [...cols, ...auditCols], description };
+  for (const fk of fks) {
+    schemaV2.foreignKeys.push({ from: name + '.' + fk.colName, to: fk.target });
+  }
+  // Audit fields (created_by, updated_by) are TEXT email — no FK needed
+
+  const isCore = document.getElementById('editTableCore')?.checked;
+  if (isCore) {
+    const coreList = (schemaV2.coreTables || []).filter(t => t !== name);
+    coreList.push(name);
+    schemaV2.coreTables = coreList;
+  }
+  closeModal();
+  save();
+  if (coreFlowMode) renderCoreFlow();
+  else render();
+}
+
+function resetToV1(tableName) {
+  const v1Table = schemaV1.tables[tableName];
+  if (!v1Table) { alert('This table does not exist in V1.'); return; }
+  const notes = schemaV2.tables[tableName]?.notes || '';
+  schemaV2.tables[tableName] = JSON.parse(JSON.stringify(v1Table));
+  if (notes) schemaV2.tables[tableName].notes = notes;
+  // Reset FKs for this table
+  schemaV2.foreignKeys = schemaV2.foreignKeys.filter(fk => !fk.from.startsWith(tableName + '.'));
+  for (const fk of schemaV1.foreignKeys) {
+    if (fk.from.startsWith(tableName + '.')) {
+      schemaV2.foreignKeys.push(JSON.parse(JSON.stringify(fk)));
+    }
+  }
+  save();
+  render();
+}
+
+function deleteTable(tableName) {
+  delete schemaV2.tables[tableName];
+  schemaV2.foreignKeys = schemaV2.foreignKeys.filter(fk =>
+    !fk.from.startsWith(tableName + '.') && !fk.to.startsWith(tableName + '.')
+  );
+  save();
+  render();
+}
+
+function openAddComment() {
+  showModal('Add Comment', `
+    <div class="modal-field">
+      <label>Comment</label>
+      <textarea id="commentText" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#e0e0e0;padding:7px 10px;border-radius:5px;font-size:13px;outline:none;resize:vertical;min-height:80px;font-family:inherit" placeholder="Enter a general comment..."></textarea>
+    </div>
+  `, () => {
+    const text = document.getElementById('commentText').value.trim();
+    if (!text) return;
+    if (!schemaV2.comments) schemaV2.comments = [];
+    schemaV2.comments.push(text);
+    closeModal();
+    save();
+    render();
+  });
+}
+
+function openEditComment(idx) {
+  const comments = schemaV2.comments || [];
+  if (idx < 0 || idx >= comments.length) return;
+  showModal('Edit Comment', `
+    <div class="modal-field">
+      <label>Comment</label>
+      <textarea id="commentText" style="width:100%;background:#0a0a0f;border:1px solid #2a2a3a;color:#e0e0e0;padding:7px 10px;border-radius:5px;font-size:13px;outline:none;resize:vertical;min-height:80px;font-family:inherit">${comments[idx].replace(/</g,'&lt;')}</textarea>
+    </div>
+  `, () => {
+    const text = document.getElementById('commentText').value.trim();
+    if (!text) { deleteComment(idx); return; }
+    schemaV2.comments[idx] = text;
+    closeModal();
+    save();
+    render();
+  }, [
+    { label: 'Delete', className: 'btn-danger', action: () => { deleteComment(idx); } }
+  ]);
+}
+
+function deleteComment(idx) {
+  if (!schemaV2.comments) return;
+  schemaV2.comments.splice(idx, 1);
+  closeModal();
+  save();
+  render();
+}
+
+function removeFk(from, to) {
+  schemaV2.foreignKeys = schemaV2.foreignKeys.filter(fk => !(fk.from === from && fk.to === to));
+  save();
+  const tableName = from.split('.')[0];
+  closeModal();
+  setTimeout(() => openEditTable(tableName), 50);
+}
+
+function showModal(title, bodyHtml, onSave, extraButtons) {
+  const existing = document.getElementById('editModal');
+  if (existing) existing.remove();
+  let extraBtnHtml = '';
+  if (extraButtons) {
+    extraBtnHtml = extraButtons.map((b, i) => `<button class="${b.className}" id="modalExtra${i}">${b.label}</button>`).join('');
+  }
+  const modal = document.createElement('div');
+  modal.id = 'editModal';
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-header"><h3>${title}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+      <div class="modal-body">${bodyHtml}</div>
+      <div class="modal-footer">
+        ${extraBtnHtml}
+        <div style="flex:1"></div>
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-save" id="modalSaveBtn">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('modalSaveBtn').addEventListener('click', onSave);
+  if (extraButtons) {
+    extraButtons.forEach((b, i) => {
+      document.getElementById('modalExtra' + i).addEventListener('click', b.action);
+    });
+  }
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+  // Snapshot initial state; Escape closes if unchanged
+  requestAnimationFrame(() => {
+    window._modalSnapshot = getModalSnapshot();
+  });
+  window._modalOnSave = onSave;
+  window._escHandler = (e) => {
+    if (!document.getElementById('editModal')) return;
+    if (e.key === 'Escape' && getModalSnapshot() === window._modalSnapshot) closeModal();
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); window._modalOnSave(); }
+  };
+  document.addEventListener('keydown', window._escHandler);
+}
+
+function getModalSnapshot() {
+  const parts = [];
+  const m = document.getElementById('editModal');
+  if (!m) return '';
+  m.querySelectorAll('input, select, textarea').forEach(el => {
+    if (el.type === 'checkbox') parts.push(el.checked ? '1' : '0');
+    else parts.push(el.value);
+  });
+  return parts.join('\x00');
+}
+
+function closeModal() {
+  if (window._escHandler) {
+    document.removeEventListener('keydown', window._escHandler);
+    window._escHandler = null;
+  }
+  const m = document.getElementById('editModal');
+  if (m) m.remove();
+}
+
+// Redraw lines on scroll/resize
+document.getElementById('canvasWrap').addEventListener('scroll', () => requestAnimationFrame(drawLines));
+window.addEventListener('resize', () => requestAnimationFrame(drawLines));
+
+// ── / to focus search ──
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !e.target.closest('input, textarea, select') && !document.getElementById('editModal')) {
+    e.preventDefault();
+    document.getElementById('searchBox').focus();
+  }
+  if (e.key === 'Escape' && document.activeElement === document.getElementById('searchBox')) {
+    document.getElementById('searchBox').value = '';
+    document.getElementById('searchBox').blur();
+    filterTables();
+  }
+});
+
+// ── Core Flow view ──
+if (!schemaV2.coreTables) {
+  schemaV2.coreTables = [
+    'org', 'farm', 'site', 'hr_employee',
+    'invnt_item', 'invnt_po', 'sales_product', 'sales_customer'
+  ];
+}
+
+function getCoreSet() {
+  return new Set(schemaV2.coreTables || []);
+}
+
+
+function renderCoreFlow() {
+  const schema = schemaV2;
+  const coreSet = getCoreSet();
+  const fkCols = getFkColumns(schema);
+  const fkTargets = {};
+  for (const fk of schema.foreignKeys) fkTargets[fk.from] = fk.to;
+
+  // Build tiers
+  const children = {};
+  const parents = {};
+  for (const t of coreSet) { children[t] = []; parents[t] = []; }
+  for (const fk of schema.foreignKeys) {
+    const fromT = fk.from.split('.')[0];
+    const toT = fk.to.split('.')[0];
+    if (coreSet.has(fromT) && coreSet.has(toT) && fromT !== toT) {
+      if (!children[toT].includes(fromT)) children[toT].push(fromT);
+      if (!parents[fromT].includes(toT)) parents[fromT].push(toT);
+    }
+  }
+  const roots = [...coreSet].filter(t => parents[t] && parents[t].length === 0);
+  const tiers = [];
+  const placed = new Set();
+  tiers.push(roots);
+  roots.forEach(r => placed.add(r));
+  let current = roots;
+  while (current.length) {
+    const next = [];
+    for (const t of current) {
+      for (const child of (children[t] || [])) {
+        if (!placed.has(child) && (parents[child] || []).every(p => placed.has(p))) {
+          next.push(child);
+          placed.add(child);
+        }
+      }
+    }
+    if (next.length) tiers.push(next);
+    current = next;
+  }
+  const unplaced = [...coreSet].filter(t => !placed.has(t) && t in schema.tables);
+  if (unplaced.length) tiers.push(unplaced);
+
+  const positions = schemaV2.corePositions || {};
+  const cardW = 220, cardH = 160, gapX = 32, gapY = 60, padTop = 24, padLeft = 24;
+  for (let ti = 0; ti < tiers.length; ti++) {
+    const tier = tiers[ti];
+    const totalW = tier.length * cardW + (tier.length - 1) * gapX;
+    const startX = Math.max(padLeft, 400 - totalW / 2);
+    for (let ci = 0; ci < tier.length; ci++) {
+      const t = tier[ci];
+      if (!positions[t]) positions[t] = { x: startX + ci * (cardW + gapX), y: padTop + ti * (cardH + gapY) };
+    }
+  }
+  let maxY = padTop;
+  for (const p of Object.values(positions)) { if (p.y > maxY) maxY = p.y; }
+  for (const t of coreSet) {
+    if (!positions[t] && t in schema.tables) {
+      positions[t] = { x: padLeft, y: maxY + cardH + gapY };
+      maxY = positions[t].y;
+    }
+  }
+
+  const auditNames = ['created_at','updated_at','created_by','updated_by','is_active','is_deleted'];
+  let html = '';
+  for (const t of coreSet) {
+    const tbl = schema.tables[t];
+    if (!tbl) continue;
+    const pos = positions[t] || { x: 24, y: 24 };
+    const fkSet = fkCols[t] || new Set();
+    html += `<div class="table-card" data-table="${t}" style="left:${pos.x}px;top:${pos.y}px;cursor:pointer" onmousedown="cfDragStart(event)" ondblclick="openEditTable('${t}')" onmouseenter="onCardHover('${t}')" onmouseleave="onCardLeave()">`;
+    const desc3 = (tbl.description || '').replace(/"/g, '&quot;');
+    html += `<div class="card-header"><span class="tname" title="${desc3}">${t}</span></div><div class="card-columns">`;
+    for (const col of tbl.columns) {
+      if (col.name === 'id' || auditNames.includes(col.name)) continue;
+      if (!fkSet.has(col.name)) continue;
+      html += `<div class="col-row"><span class="col-fk-icon">&#128279;</span><span class="col-name fk">${col.name}</span>`;
+      if (fkTargets[t + '.' + col.name]) html += `<span class="fk-target" style="font-size:9px;color:#555;margin-left:auto"> ${fkTargets[t + '.' + col.name]}</span>`;
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+  }
+  document.getElementById('coreFlowContent').innerHTML = html;
+  setTimeout(() => drawCoreLines(coreSet), 50);
+}
+
+// ── Core flow dragging ──
+let cfDragging = null;
+let cfOffset = { x: 0, y: 0 };
+
+function cfDragStart(e) {
+  const card = e.target.closest('.table-card');
+  if (!card) return;
+  e.preventDefault();
+  cfDragging = card;
+  const rect = card.getBoundingClientRect();
+  cfOffset.x = e.clientX - rect.left;
+  cfOffset.y = e.clientY - rect.top;
+  card.style.zIndex = 20;
+}
+
+document.addEventListener('mousemove', (e) => {
+  if (!cfDragging) return;
+  const container = document.getElementById('coreFlowContent');
+  const containerRect = container.getBoundingClientRect();
+  const x = e.clientX - containerRect.left - cfOffset.x + document.getElementById('coreFlowContainer').scrollLeft;
+  const y = e.clientY - containerRect.top - cfOffset.y + document.getElementById('coreFlowContainer').scrollTop;
+  cfDragging.style.left = Math.max(0, x) + 'px';
+  cfDragging.style.top = Math.max(0, y) + 'px';
+  drawCoreLines(getCoreSet());
+});
+
+document.addEventListener('mouseup', () => {
+  if (!cfDragging) return;
+  const t = cfDragging.dataset.table;
+  cfDragging.style.zIndex = 2;
+  if (!schemaV2.corePositions) schemaV2.corePositions = {};
+  schemaV2.corePositions[t] = {
+    x: parseInt(cfDragging.style.left),
+    y: parseInt(cfDragging.style.top)
+  };
+  cfDragging = null;
+  save();
+});
+
+function drawCoreLines(coreSet) {
+  const svg = document.getElementById('coreFlowSvg');
+  const content = document.getElementById('coreFlowContent');
+  if (!svg || !content) return;
+
+  const w = content.scrollWidth;
+  const h = content.scrollHeight;
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  svg.style.width = w + 'px';
+  svg.style.height = h + 'px';
+
+  const schema = schemaV2;
+  const cardEls = {};
+  content.querySelectorAll('.table-card').forEach(el => { cardEls[el.dataset.table] = el; });
+  const containerRect = content.getBoundingClientRect();
+
+  let paths = '';
+  for (const fk of schema.foreignKeys) {
+    const fromT = fk.from.split('.')[0];
+    const toT = fk.to.split('.')[0];
+    if (!coreSet.has(fromT) || !coreSet.has(toT) || fromT === toT) continue;
+    const fromEl = cardEls[fromT];
+    const toEl = cardEls[toT];
+    if (!fromEl || !toEl) continue;
+
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const x1 = toRect.left + toRect.width / 2 - containerRect.left;
+    const y1 = toRect.bottom - containerRect.top;
+    const x2 = fromRect.left + fromRect.width / 2 - containerRect.left;
+    const y2 = fromRect.top - containerRect.top;
+    const my = (y1 + y2) / 2;
+    paths += `<path d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}" fill="none" stroke="#6B8AAF" stroke-opacity="0.4" stroke-width="1.5"/>`;
+  }
+  svg.innerHTML = paths;
+}
+
+// ── Drag to reorder ──
+let dragTable = null;
+
+function onDragStart(e) {
+  dragTable = e.currentTarget.dataset.table;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  const target = e.currentTarget;
+  if (target.dataset.table === dragTable) return;
+  if (target.dataset.group !== document.querySelector(`[data-table="${dragTable}"]`)?.dataset.group) return;
+  target.classList.add('drag-over');
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  const dropTable = e.currentTarget.dataset.table;
+  const dropGroup = e.currentTarget.dataset.group;
+  e.currentTarget.classList.remove('drag-over');
+  if (!dragTable || dragTable === dropTable) return;
+
+  const groups = getActiveGroups();
+  const tables = groups[dropGroup];
+  if (!tables) return;
+
+  const fromIdx = tables.indexOf(dragTable);
+  const toIdx = tables.indexOf(dropTable);
+  if (fromIdx === -1 || toIdx === -1) return;
+  tables.splice(fromIdx, 1);
+  tables.splice(toIdx, 0, dragTable);
+
+  const schema = currentVersion === 'v1' ? schemaV1 : schemaV2;
+  if (!schema.tableOrder) schema.tableOrder = {};
+  schema.tableOrder[dropGroup] = [...tables];
+  save();
+  render();
+}
+
+document.addEventListener('dragend', () => {
+  dragTable = null;
+  document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+});
+
+// Initial render with embedded fallback (startup async will re-render with live data)
+render();
+</script>
+</body>
+</html>
