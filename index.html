@@ -172,7 +172,7 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
 <body>
 
 <div class="topbar">
-  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-24 12:10pm</span>
+  <h1>Aloha Schema</h1><span style="font-size:11px;color:#e0e0e0" id="versionLabel">v: 03-24 12:20pm</span>
   <div class="version-toggle">
     <button id="btnV1" onclick="setVersion('v1')">V1</button>
     <button id="btnV2" class="active" onclick="setVersion('v2')">V2</button>
@@ -205,7 +205,8 @@ body { background: #0a0a0f; color: #e0e0e0; font-family: -apple-system, BlinkMac
     <div id="diffContent"><p class="no-diff">Switch to V2 to see differences.</p></div>
     <div id="sidebarActions" style="margin-top:16px;display:none;">
       <button class="add-table-btn" onclick="openAddComment()" style="width:100%;margin-bottom:8px">+ Add Comment</button>
-      <button class="add-table-btn" onclick="openAddTable()" style="width:100%">+ Add Table</button>
+      <button class="add-table-btn" onclick="openAddTable()" style="width:100%;margin-bottom:8px">+ Add Table</button>
+      <button class="add-table-btn" onclick="exportCommentsCsv()" style="width:100%;border-color:#6B8AAF;color:#6B8AAF">Export Comments CSV</button>
     </div>
   </div>
 </div>
@@ -889,6 +890,32 @@ function buildCsvFromChangelog() {
     lines.push([csvEscape(r.table), csvEscape(r.type), csvEscape(r.detail), csvEscape(r.notes)].join(','));
   }
   return lines.join('\n');
+}
+
+function exportCommentsCsv() {
+  const lines = ['type,table,text'];
+  const comments = schemaV2.comments || [];
+  for (const c of comments) {
+    lines.push([csvEscape('comment'), csvEscape(''), csvEscape(c)].join(','));
+  }
+  for (const [name, tbl] of Object.entries(schemaV2.tables)) {
+    if (tbl.notes && tbl.notes.trim()) {
+      lines.push([csvEscape('note'), csvEscape(name), csvEscape(tbl.notes.trim())].join(','));
+    }
+    if (tbl.description && tbl.description.trim()) {
+      lines.push([csvEscape('description'), csvEscape(name), csvEscape(tbl.description.trim())].join(','));
+    }
+  }
+  if (lines.length === 1) { alert('No comments or notes to export.'); return; }
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `schema-comments-${dateStr}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function parseCsv(text) {
